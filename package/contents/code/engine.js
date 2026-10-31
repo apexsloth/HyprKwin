@@ -440,20 +440,30 @@ function createEngine(userConfig) {
         return p.factor !== before;
     }
 
-    // Gaps a workspace rule set for one space; anything it leaves out falls
-    // back to the global setting.
+    // Gaps the workspace rules set for one space, as {inner, outer, byCount:
+    // [{min, max, inner, outer}]}; `count` is how many windows the space
+    // shows. A byCount entry whose range holds the count comes first, in
+    // order, then the plain inner and outer, and anything they all leave out
+    // falls back to the global setting.
     var spaceGaps = {};
-    function gapsFor(space) {
+    var SIDES = ["left", "top", "right", "bottom"];
+    function gapsFor(space, count) {
         var g = spaceGaps[space] || {};
-        var o = g.outer || {};
-        var outer = {};
-        ["left", "top", "right", "bottom"].forEach(function (s) {
-            outer[s] = (o[s] === undefined || o[s] === null) ? cfg.gapsOut[s] : o[s];
+        var sources = (g.byCount || []).filter(function (e) {
+            return (e.min === undefined || e.min === null || count >= e.min) &&
+                (e.max === undefined || e.max === null || count <= e.max);
         });
-        return {
-            inner: (g.inner === undefined || g.inner === null) ? cfg.gapsIn : g.inner,
-            outer: outer,
-        };
+        sources.push(g);
+        var set = function (v) { return v !== undefined && v !== null; };
+        var inner = null;
+        var outer = { left: null, top: null, right: null, bottom: null };
+        sources.forEach(function (s) {
+            if (inner === null && set(s.inner)) inner = s.inner;
+            var o = s.outer || {};
+            SIDES.forEach(function (side) { if (outer[side] === null && set(o[side])) outer[side] = o[side]; });
+        });
+        SIDES.forEach(function (side) { if (outer[side] === null) outer[side] = cfg.gapsOut[side]; });
+        return { inner: inner === null ? cfg.gapsIn : inner, outer: outer };
     }
 
     // Whichever of these was focused most recently.
@@ -473,7 +483,7 @@ function createEngine(userConfig) {
     function computeRects(space) {
         var area = areas[space] || rect(0, 0, 1920, 1080);
         if (!roots[space]) return;
-        var gOut = gapsFor(space).outer;
+        var gOut = gapsFor(space, leaves(roots[space]).filter(shown).length).outer;
         arrange(space, shrink(area, gOut.left, gOut.top, gOut.right, gOut.bottom));
     }
 
@@ -633,8 +643,8 @@ function createEngine(userConfig) {
     }
 
     api = {
-        // Gaps for one space, from a workspace rule; null goes back to the
-        // global setting.
+        // Gaps for one space, from the workspace rules (see gapsFor); null
+        // goes back to the global setting.
         setGaps: function (space, gaps) {
             if (gaps) spaceGaps[space] = gaps;
             else delete spaceGaps[space];
@@ -864,7 +874,7 @@ function createEngine(userConfig) {
             var all = leaves(root).filter(shown);
             if (!all.length) return result;
             var only = all.length === 1 && cfg.noGapsWhenOnly;
-            var g = gapsFor(space);
+            var g = gapsFor(space, all.length);
             var gIn = only ? 0 : g.inner;
             var gOut = only ? { left: 0, top: 0, right: 0, bottom: 0 } : g.outer;
             var inner = shrink(area, gOut.left, gOut.top, gOut.right, gOut.bottom);

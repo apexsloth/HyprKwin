@@ -413,13 +413,16 @@ def translate_workspace_rules(items):
         if not parts:
             continue
         selector = parts[0]
-        if not re.match(r"^\d+$", selector):
-            notes.append(("workspace %s: HyprKwin's workspaces are numbered" % selector, item.origin))
+        # A number, or w[] and m[] selectors, which set gaps only.
+        selected = re.match(r"^(\s*[wm]\[[^\]]*\]\s*)+$", selector, re.I)
+        if not re.match(r"^\d+$", selector) and not selected:
+            notes.append(("workspace %s: HyprKwin's workspaces are numbered, or picked by w[] and m[]" % selector, item.origin))
             continue
+        allowed = ["gapsin", "gapsout"] if selected else WORKSPACE_PROPERTIES
         kept = []
         for p in parts[1:]:
             name = p.split(":", 1)[0].strip().lower().replace("_", "")
-            if name in WORKSPACE_PROPERTIES:
+            if name in allowed:
                 kept.append(p)
             else:
                 notes.append(("workspace %s: dropped '%s'" % (selector, p), item.origin))

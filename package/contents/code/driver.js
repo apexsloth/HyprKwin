@@ -28,6 +28,7 @@ function createDriver(env) {
     var submaps = {};               // name -> {name, key, binds}
     var activeSubmap = null;        // the submap the keyboard is in, if any
     var workspaceRules = {};        // workspace number -> rule
+    var workspaceSelectors = [];    // the w[]/m[] rules, in order (gaps only)
     // Layout choices from earlier sessions. Nothing is saved until they have
     // been read back, or the first save would wipe them.
     var layoutsRestored = false;
@@ -229,6 +230,20 @@ function createDriver(env) {
 
     function workspaceRuleFor(d) {
         return d ? (workspaceRules[workspaceNumber(d)] || null) : null;
+    }
+
+    // A screen as a workspace rule's m[] selector sees it: its name, its
+    // place in the monitor order, and its make, model and serial as one
+    // string, the way Hyprland's desc: describes a monitor.
+    function screenInfo(screen) {
+        return {
+            name: screen.name,
+            index: screens().indexOf(screen),
+            description: [screen.manufacturer, screen.model, screen.serialNumber]
+                .map(function (s) { return s ? String(s).trim() : ""; })
+                .filter(function (s) { return s !== ""; })
+                .join(" "),
+        };
     }
 
     // The monitor a workspace rule pins this workspace to, if any.
@@ -778,6 +793,7 @@ function createDriver(env) {
         ruleErrors = parsed.errors;
         var spaces = R.parseWorkspaceRules(cfg.workspaceRules);
         workspaceRules = spaces.rules;
+        workspaceSelectors = spaces.selectors;
         // A changed rule applies again, even to a space that has one already.
         ruledSpaces = {};
         spaces.errors.forEach(function (e) { ruleErrors.push("workspace rule, " + e); });
@@ -1452,12 +1468,13 @@ function createDriver(env) {
         return vis;
     }
 
-    // What a workspace rule says about how this space is laid out. The
-    // layout is set once, so Meta+Shift+J still has the last word afterwards.
+    // What the workspace rules say about how this space is laid out: its
+    // gaps, from its numbered rule and the w[]/m[] rules for its screen, and
+    // its layout. The layout is set once, so Meta+Shift+J still has the last
+    // word afterwards.
     function applyWorkspaceRule(vs) {
         var r = workspaceRuleFor(vs.desktop);
-        var gaps = r && (r.gapsIn !== null || r.gapsOut !== null) ? { inner: r.gapsIn, outer: r.gapsOut } : null;
-        engine.setGaps(vs.space, gaps);
+        engine.setGaps(vs.space, R.workspaceGaps(r, workspaceSelectors, screenInfo(vs.screen)));
         if (r && r.layout && !ruledSpaces[vs.space]) {
             ruledSpaces[vs.space] = true;
             engine.setLayout(vs.space, r.layout);
@@ -3725,6 +3742,7 @@ function createDriver(env) {
                 config: cfg,
                 configReloads: reloads,
                 cursor: { x: ws.cursorPos.x, y: ws.cursorPos.y },
+                screens: screens().map(screenInfo),
                 popups: popupRects(),
                 layouts: (function () {
                     var out = {};

@@ -92,7 +92,19 @@ page's **Workspace rules** tab:
 ```
 workspace = 3, monitor:DP-2, default:true
 2, layout:master, gapsin:0, gapsout:0
+w[t1] m[desc:Samsung], gapsout:5 1200 5 1200
 ```
+
+A rule starts with a workspace number, or with Hyprland's selectors, which
+pick workspaces by what they show rather than by number:
+
+| Selector | Picks |
+|---|---|
+| `w[t1]`, `w[t1-2]` | a workspace showing that many tiled windows (`t` and `v`, Hyprland's tiled and visible flags, may be left out: it is always the tiled windows on screen that are counted; floating and group counts are not kept) |
+| `m[DP-2]` or `m[1]` | a workspace on that monitor, by name or by place in the monitor order (`1` is the second) |
+| `m[desc:Samsung]` | a workspace on a monitor whose make, model or serial contains that, in any case: the description Hyprland's `desc:` matches, and what `hyprkwinctl state` lists under `screens` |
+
+Two selectors on one line both have to hold, as in `w[t1] m[desc:Samsung]`.
 
 | Property | Does |
 |---|---|
@@ -102,9 +114,18 @@ workspace = 3, monitor:DP-2, default:true
 | `gapsin:N` | inner gaps for that workspace alone |
 | `gapsout:N` or `gapsout:T R B L` | outer gaps for that workspace alone; takes 1 to 4 values (top, right, bottom, left)|
 
+A selector rule sets gaps only (`gapsin`, `gapsout`); the other properties
+belong to a numbered workspace. The example above keeps a lone window on an
+ultrawide to its middle 2720 px instead of stretching it across the screen,
+as Hyprland does with a `w[tv1]` rule; `w[t2] m[desc:Samsung], gapsout:5 480
+5 480` would then give a pair a little more room.
+
 The `workspace = ` prefix is optional, so lines can be pasted straight out of
-a `hyprland.conf`. The first rule for a workspace wins on each property, and a
-rule with something wrong with it is reported rather than guessed at.
+a `hyprland.conf`. On each property, a rule with a window count comes before
+one without, a workspace's numbered rule before a monitor rule, and otherwise
+the first rule wins; a side no rule sets keeps the global gap. **No gaps when
+only** on the settings page still drops every gap for a lone window. A rule
+with something wrong with it is reported rather than guessed at.
 
 ### Submaps
 

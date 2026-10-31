@@ -243,16 +243,26 @@ function plasmaRule(line) {
 //
 //   workspace = 3, monitor:DP-2, default:true, layout:master
 //   2, monitor:1, gapsin:0, gapsout:0
+//   w[t1] m[desc:Samsung], gapsout:5 1200 5 1200
 //
-// Supported properties: monitor:<n|name> pins the workspace to a monitor,
-// default:true makes it the one that monitor starts on, layout:<name> gives
-// it a layout (stage too), and gapsin/gapsout set its gaps. Lines starting with '#' are
+// A rule starts with a workspace number, or with Hyprland's selectors: w[t1]
+// is a workspace showing one tiled window (w[t1-2] one to two), m[DP-2] or
+// m[desc:Samsung] one on that monitor (by name, or by part of its make, model
+// and serial). Supported properties: monitor:<n|name> pins the workspace to
+// a monitor, default:true makes it the one that monitor starts on,
+// layout:<name> gives it a layout (stage too), and gapsin/gapsout set its
+// gaps; a selector rule sets gaps only. Lines starting with '#' are
 // comments; the first rule for a workspace wins on each property.
 
 var WORKSPACE_LAYOUTS = ["dwindle", "master", "monocle", "scrolling", "stage"];
 
+// Returns {rules, selectors, errors}: rules by workspace number, and the
+// selector rules in order, each {windows: {min, max} | null, screen: {name}
+// | {desc} | null, gapsIn, gapsOut}. workspaceGaps turns them into the gaps
+// for one space.
 function parseWorkspaceRules(text) {
     var rules = {};
+    var selectors = [];
     var errors = [];
     String(text || "").split(/\r?\n/).forEach(function (raw, lineNo) {
         var line = raw.trim();
@@ -260,15 +270,25 @@ function parseWorkspaceRules(text) {
         line = line.replace(/^workspace\s*=\s*/i, "");
         var parts = line.split(",").map(function (p) { return p.trim(); }).filter(function (p) { return p !== ""; });
         var where = "line " + (lineNo + 1) + ": ";
-        var selector = parts.shift();
-        var index = /^\d+$/.test(selector || "") ? parseInt(selector, 10) : 0;
+        var selector = parts.shift() || "";
+        var index = /^\d+$/.test(selector) ? parseInt(selector, 10) : 0;
+        var on = null;
         if (!(index > 0)) {
-            errors.push(where + "a workspace rule starts with a workspace number, e.g. workspace = 3, monitor:DP-2");
-            return;
+            if (selector.indexOf("[") < 0) {
+                errors.push(where + "a workspace rule starts with a workspace number or with w[]/m[] selectors, e.g. workspace = 3, monitor:DP-2 or w[t1] m[desc:Samsung], gapsout:0");
+                return;
+            }
+            on = parseWorkspaceSelectors(selector);
+            if (typeof on === "string") {
+                errors.push(where + on);
+                return;
+            }
         }
-        var rule = rules[index]
+        var rule = (index && rules[index])
             || {
                 index: index,
+                windows: on ? on.windows : null,
+                screen: on ? on.screen : null,
                 monitor: null,
                 isDefault: false,
                 layout: null,
@@ -289,6 +309,11 @@ function parseWorkspaceRules(text) {
                 return;
             }
             var key = m[1].toLowerCase().replace(/_/g, ""), value = m[2].trim();
+            if (on && (key === "monitor" || key === "default" || key === "layout")) {
+                errors.push(where + m[1] + ": a w[]/m[] rule sets gaps only (gapsin, gapsout)");
+                ok = false;
+                return;
+            }
             switch (key) {
             case "monitor":
                 if (!value) { errors.push(where + "monitor: needs a number or a name, e.g. monitor:DP-2"); ok = false; return; }
@@ -330,7 +355,82 @@ function parseWorkspaceRules(text) {
                 ok = false;
             }
         });
-        if (ok) rules[index] = rule;
+        if (!ok) return;
+        if (on) selectors.push(rule);
+        else rules[index] = rule;
     });
-    return { rules: rules, errors: errors };
+    return { rules: rules, selectors: selectors, errors: errors };
+}
+
+// "w[t1] m[desc:Samsung]": which spaces a selector rule is for, as {windows:
+// {min, max} | null, screen: {name} | {desc} | null}, or a string saying what
+// is wrong with it. w[] counts the tiled windows a workspace shows, which is
+// what Hyprland's t and v flags come to here; floating (f) and group (g)
+// counts are not kept.
+function parseWorkspaceSelectors(text) {
+    var tokens = text.match(/[A-Za-z]\[[^\]]*\]/g) || [];
+    if (tokens.join("").replace(/\s+/g, "") !== text.replace(/\s+/g, "")) {
+        return "selectors are w[...] and m[...], separated by spaces, e.g. w[t1] m[desc:Samsung]";
+    }
+    var on = { windows: null, screen: null };
+    for (var i = 0; i < tokens.length; i++) {
+        var kind = tokens[i].charAt(0).toLowerCase(), body = tokens[i].slice(2, -1).trim();
+        if (kind === "w") {
+            if (on.windows) return "w[]: given twice";
+            var m = /^([A-Za-z]*)(\d+)(?:-(\d+))?$/.exec(body);
+            if (!m || /[^tv]/i.test(m[1])) {
+                return "w[]: takes a count of tiled windows, or a range, e.g. w[t1] or w[t1-2]" +
+                    (m ? " (floating and group counts are not supported)" : "");
+            }
+            var min = parseInt(m[2], 10), max = m[3] === undefined ? min : parseInt(m[3], 10);
+            if (max < min) return "w[]: a range runs low to high, e.g. w[t1-2]";
+            on.windows = { min: min, max: max };
+        } else if (kind === "m") {
+            if (on.screen) return "m[]: given twice";
+            var d = /^desc:(.*)$/i.exec(body);
+            if (d) body = d[1].trim();
+            if (!body) return "m[]: needs a monitor, by name or by part of its description, e.g. m[DP-2] or m[desc:Samsung]";
+            on.screen = d ? { desc: body } : { name: body };
+        } else {
+            return "'" + tokens[i] + "' is not a selector: w[] picks by window count and m[] by monitor";
+        }
+    }
+    return on;
+}
+
+// Whether a selector rule is for this screen: {name, index, description},
+// the description being its make, model and serial, as Hyprland's desc: is.
+// "1" is the second monitor, as in Hyprland; anything else is a name.
+function selectorOnScreen(rule, screen) {
+    var s = rule.screen;
+    if (!s) return true;
+    if (!screen) return false;
+    if (s.desc !== undefined) return String(screen.description || "").toLowerCase().indexOf(s.desc.toLowerCase()) >= 0;
+    if (/^\d+$/.test(s.name)) return screen.index === parseInt(s.name, 10);
+    return String(screen.name || "").toLowerCase() === s.name.toLowerCase();
+}
+
+// The gaps for a workspace on a screen, as the engine takes them: {inner,
+// outer, byCount}. The workspace's numbered rule and the monitor rules for
+// the screen give the plain gaps, the first to set a side winning; the
+// rules with a window count come along in order, for the engine to pick
+// from once it knows how many windows the workspace shows. Null when no rule
+// says anything about its gaps.
+function workspaceGaps(rule, selectors, screen) {
+    var gaps = { inner: null, outer: { left: null, top: null, right: null, bottom: null }, byCount: [] };
+    var any = false;
+    function fill(r) {
+        if (r.gapsIn !== null && gaps.inner === null) { gaps.inner = r.gapsIn; any = true; }
+        for (var side in gaps.outer) {
+            if (r.gapsOut[side] !== null && gaps.outer[side] === null) { gaps.outer[side] = r.gapsOut[side]; any = true; }
+        }
+    }
+    if (rule) fill(rule);
+    (selectors || []).forEach(function (r) {
+        if (!selectorOnScreen(r, screen)) return;
+        if (!r.windows) { fill(r); return; }
+        gaps.byCount.push({ min: r.windows.min, max: r.windows.max, inner: r.gapsIn, outer: r.gapsOut });
+        any = true;
+    });
+    return any ? gaps : null;
 }

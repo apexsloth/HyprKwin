@@ -153,11 +153,16 @@ class Rules(unittest.TestCase):
     def test_workspace_rules(self):
         plan = read("workspace = 3, monitor:DP-2, default:true, persistent:true\n"
                     "workspace = special:magic, gapsout:0\n"
-                    "workspace = 2, layout:master")
-        self.assertEqual(plan["workspaces"], ["3, monitor:DP-2, default:true", "2, layout:master"])
+                    "workspace = 2, layout:master\n"
+                    "workspace = w[tv1] m[desc:Samsung], gapsout:0, layout:monocle\n"
+                    "workspace = r[1-3], gapsin:0")
+        self.assertEqual(plan["workspaces"], ["3, monitor:DP-2, default:true", "2, layout:master",
+                                              "w[tv1] m[desc:Samsung], gapsout:0"])
         self.assertEqual([n[0] for n in plan["notes"]],
                          ["workspace 3: dropped 'persistent:true'",
-                          "workspace special:magic: HyprKwin's workspaces are numbered"])
+                          "workspace special:magic: HyprKwin's workspaces are numbered, or picked by w[] and m[]",
+                          "workspace w[tv1] m[desc:Samsung]: dropped 'layout:monocle'",
+                          "workspace r[1-3]: HyprKwin's workspaces are numbered, or picked by w[] and m[]"])
 
 
 class Binds(unittest.TestCase):

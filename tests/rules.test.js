@@ -1,7 +1,7 @@
 import { assertEquals } from "./assert.js";
 
 const src = Deno.readTextFileSync(new URL("../package/contents/code/rules.js", import.meta.url));
-const R = new Function(src + "\nreturn { parseRules, matchRules, parseWorkspaceRules, plasmaRule, DEFAULT_RULES };")();
+const R = new Function(src + "\nreturn { parseRules, matchRules, parseWorkspaceRules, workspaceGaps, plasmaRule, DEFAULT_RULES };")();
 
 Deno.test("parses hyprland windowrule lines", () => {
     const { rules, errors } = R.parseRules(`
@@ -125,6 +125,66 @@ Deno.test("a workspace rule's number is a whole number", () => {
     const { rules, errors } = R.parseWorkspaceRules("3abc, layout:master");
     assertEquals(Object.keys(rules), []);
     assertEquals(errors.length, 1);
+});
+
+Deno.test("workspace rules select by window count and monitor, as Hyprland's w[] and m[] do", () => {
+    const { rules, selectors, errors } = R.parseWorkspaceRules(
+        "w[t1] m[desc:Samsung], gapsout:5 1200 5 1200\nworkspace = w[tv2] m[DP-3], gaps_out:5 480 5 480\nw[1-3], gapsin:0\nm[1], gapsout:2\n3, gapsin:1");
+    assertEquals(errors, []);
+    assertEquals(Object.keys(rules), ["3"], "numbered rules keep their place");
+    assertEquals(selectors.map((s) => [s.windows, s.screen]), [
+        [{ min: 1, max: 1 }, { desc: "Samsung" }],
+        [{ min: 2, max: 2 }, { name: "DP-3" }],
+        [{ min: 1, max: 3 }, null],
+        [null, { name: "1" }],
+    ]);
+    assertEquals(selectors[0].gapsOut, { left: 1200, top: 5, right: 1200, bottom: 5 });
+    assertEquals(selectors[2].gapsIn, 0);
+});
+
+Deno.test("a selector rule sets gaps only, and says what is wrong with it", () => {
+    const bad = R.parseWorkspaceRules([
+        "w[t1], layout:master",             // not for a selector rule
+        "w[f1], gapsout:0",                 // floating counts are not kept
+        "w[t2-1], gapsout:0",               // backwards
+        "w[t1] w[t2], gapsout:0",           // twice
+        "r[1-3], gapsout:0",                // not a selector we have
+        "m[desc:], gapsout:0",              // empty
+        "w[t1] x, gapsout:0",               // stray text
+    ].join("\n"));
+    assertEquals(bad.selectors, []);
+    assertEquals(bad.errors.length, 7);
+    assertEquals(bad.errors[0].includes("gaps only"), true);
+    assertEquals(bad.errors[1].includes("floating"), true);
+    assertEquals(bad.errors[4].includes("r[1-3]"), true);
+});
+
+Deno.test("workspaceGaps picks the rules for a screen, the counted ones for the engine to choose from", () => {
+    const { rules, selectors, errors } = R.parseWorkspaceRules([
+        "3, gapsin:2, gapsout:9",
+        "m[desc:samsung], gapsout:7 7 7 7",
+        "w[t1] m[desc:Samsung], gapsout:5 1200 5 1200",
+        "w[t2] m[DP-1], gapsout:5 480 5 480",
+        "w[t2] m[1], gapsin:0",
+    ].join("\n"));
+    assertEquals(errors, []);
+    const samsung = { name: "DP-3", index: 1, description: "Samsung Electric Company C49RG9x H1AK500000" };
+    const laptop = { name: "DP-1", index: 0, description: "AU Optronics B140QAN06.S" };
+    // The numbered rule comes first on the plain gaps, the monitor rule fills in.
+    let g = R.workspaceGaps(rules[3], selectors, samsung);
+    assertEquals([g.inner, g.outer], [2, { left: 9, top: 9, right: 9, bottom: 9 }]);
+    assertEquals(g.byCount, [
+        { min: 1, max: 1, inner: null, outer: { left: 1200, top: 5, right: 1200, bottom: 5 } },
+        { min: 2, max: 2, inner: 0, outer: { left: null, top: null, right: null, bottom: null } },
+    ], "m[1] is the second monitor");
+    g = R.workspaceGaps(null, selectors, samsung);
+    assertEquals([g.inner, g.outer], [null, { left: 7, top: 7, right: 7, bottom: 7 }]);
+    g = R.workspaceGaps(null, selectors, laptop);
+    assertEquals([g.inner, g.outer], [null, { left: null, top: null, right: null, bottom: null }]);
+    assertEquals(g.byCount.map((e) => e.outer.left), [480]);
+    // Nothing about gaps: no gaps object at all.
+    assertEquals(R.workspaceGaps(null, [], laptop), null);
+    assertEquals(R.workspaceGaps(R.parseWorkspaceRules("2, layout:master").rules[2], [], laptop), null);
 });
 
 Deno.test("fullscreen and maximize rules become Plasma window rules", () => {

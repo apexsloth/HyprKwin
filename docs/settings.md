@@ -18,7 +18,7 @@ System Settings › Window Management › KWin Scripts › HyprKwin › configur
 | Split width multiplier | `dwindle:split_width_multiplier` | 1.0 |
 | New window goes | `dwindle:force_split` | right / bottom |
 | Preserve split | `dwindle:preserve_split` | on |
-| No gaps when only | `workspace = w[tv1], gapsout:0, gapsin:0` | off |
+| No gaps when only | `workspace = w[tv1], gapsout:0, gapsin:0` (that rule works here too) | off |
 | Focused window shown by | title bars / `general:border_size` | coloured border |
 | Border size | `general:border_size` | 2 px |
 | Corner radius | `decoration:rounding` | 0 (square) |
@@ -41,7 +41,7 @@ System Settings › Window Management › KWin Scripts › HyprKwin › configur
 | Scratchpad margin | – | 40 px |
 | Dim behind the scratchpad | `decoration:dim_special` | off (needs the effect) |
 | Extra scratchpads | `special:name` workspaces | none |
-| Workspace rules | `workspace = …` | see [Workspace rules](rules-and-scripting.md#workspace-rules) |
+| Workspace rules | `workspace = …`, by number or with `w[]` / `m[]` selectors | see [Workspace rules](rules-and-scripting.md#workspace-rules) |
 | Window rules | `windowrule = …` | see [Window rules](rules-and-scripting.md#window-rules) |
 
 Border colours follow the colour scheme by default: the accent colour marks

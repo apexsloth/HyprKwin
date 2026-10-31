@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Workspace rules by window count and monitor**: a rule can start with
+  Hyprland's `w[t1]` (one tiled window; `w[t1-2]` a range) and `m[DP-2]` or
+  `m[desc:Samsung]` selectors instead of a workspace number, to set gaps
+  such as `w[t1] m[desc:Samsung], gapsout:5 1200 5 1200`, which keeps a
+  lone window on an ultrawide from stretching across it. A `hyprland.conf`
+  import keeps such rules. See [Workspace
+  rules](docs/rules-and-scripting.md#workspace-rules).
+
 ## 1.2.0
 
 *HyprKwin animations 1.2.0 (changed in this release).*

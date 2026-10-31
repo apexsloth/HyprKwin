@@ -404,6 +404,44 @@ Deno.test("outer gaps can differ per side", () => {
     assertEquals(l.windows.a, { x: 0, y: 5, width: 990, height: 895 });
 });
 
+Deno.test("a workspace's outer gaps can depend on how many windows it shows", () => {
+    const e = E.createEngine({ gapsIn: 4, gapsOut: { left: 5, top: 5, right: 5, bottom: 5 } });
+    const wide = { x: 0, y: 0, width: 5120, height: 1440 };
+    const none = { left: null, top: null, right: null, bottom: null };
+    e.setGaps(S, { inner: null, outer: none, byCount: [
+        { min: 1, max: 1, inner: null, outer: { left: 1200, top: null, right: 1200, bottom: null } },
+        { min: 2, max: 2, inner: 0, outer: { left: 480, top: null, right: 480, bottom: null } },
+    ] });
+    e.add("a", S); e.focused("a");
+    let l = e.layout(S, wide);
+    assertEquals(l.windows.a, { x: 1200, y: 5, width: 2720, height: 1430 }, "alone: 1200 at the sides, the global 5 above and below");
+    e.add("b", S); e.focused("b");
+    l = e.layout(S);
+    assertEquals(l.windows.a, { x: 480, y: 5, width: 2080, height: 1430 }, "two: 480 at the sides, and the rule's inner gap of 0");
+    assertEquals(l.windows.b, { x: 2560, y: 5, width: 2080, height: 1430 });
+    e.add("c", S);
+    l = e.layout(S);
+    assertEquals([l.windows.a.x, l.windows.a.width], [5, 2551], "three: no rule matches, the global gaps");
+    // A range, and a rule with a count comes before the plain one.
+    e.setGaps(S, { inner: null, outer: { left: 50, top: null, right: 50, bottom: null }, byCount: [
+        { min: 1, max: 2, inner: null, outer: { left: 1200, top: null, right: 1200, bottom: null } },
+    ] });
+    l = e.layout(S);
+    assertEquals(l.windows.a.x, 50);
+    e.remove("c");
+    l = e.layout(S);
+    assertEquals(l.windows.a.x, 1200);
+});
+
+Deno.test("noGapsWhenOnly still drops every gap for a lone window, counted rules or not", () => {
+    const e = E.createEngine({ gapsIn: 4, gapsOut: { left: 5, top: 5, right: 5, bottom: 5 }, noGapsWhenOnly: true });
+    e.setGaps(S, { inner: null, outer: { left: null, top: null, right: null, bottom: null }, byCount: [
+        { min: 1, max: 1, inner: null, outer: { left: 1200, top: null, right: 1200, bottom: null } },
+    ] });
+    e.add("a", S);
+    assertEquals(e.layout(S, AREA).windows.a, AREA);
+});
+
 Deno.test("stage layout: the focused window beside a strip of the others, most recent first", () => {
     const e = eng({ defaultLayout: "stage", gapsOut: { left: 10, top: 10, right: 10, bottom: 10 }, gapsIn: 5, stageWidth: 200 });
     three(e);                                   // focus went a, b, c
